@@ -12,8 +12,8 @@ export interface User {
   createdAt: Date;
 }
 
-export type TicketStatus = 'new' | 'in-progress' | 'on-hold' | 'resolved' | 'closed';
-export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
+export type TicketStatus = 'open' | 'in-progress' | 'resolved' | 'closed';
+export type TicketPriority = 'low' | 'medium' | 'high';
 export type TicketType = 'bug' | 'feature-request' | 'technical-support' | 'other';
 
 export interface Attachment {

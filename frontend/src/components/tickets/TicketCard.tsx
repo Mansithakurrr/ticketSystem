@@ -70,7 +70,7 @@ const TicketCard: React.FC<TicketCardProps> = ({
             {ticket.comments.length > 0 && (
               <div className="flex items-center">
                 <MessageSquare className="h-3 w-3 mr-1" />
-                <span>{ticket.comments.length}</span>
+                {ticket.comments.length > 0 ? ticket.comments.length : 'No comments'}
               </div>
             )}
             

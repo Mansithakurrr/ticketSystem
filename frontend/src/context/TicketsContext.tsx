@@ -1,7 +1,15 @@
+// TicketsContext.tsx
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Ticket, TicketStatus, TicketPriority, TicketType, Comment, Attachment, Notification } from '../types';
 import { tickets as mockTickets, notifications as mockNotifications } from '../data/mockData';
 import { useAuth } from './AuthContext';
+import axios from 'axios'; // Import axios
+
+// Add AuthContextType interface if it doesn't exist in AuthContext
+interface AuthContextType {
+  currentUser: { id: string } | null;
+  authToken: string | null;
+}
 
 interface TicketsContextType {
   tickets: Ticket[];
@@ -9,7 +17,7 @@ interface TicketsContextType {
   getTicketById: (id: string) => Ticket | undefined;
   getTicketsByUser: (userId: string) => Ticket[];
   getTicketsByStatus: (status: TicketStatus) => Ticket[];
-  createTicket: (ticketData: Partial<Ticket>) => Promise<Ticket>;
+  createTicket: (ticketData: FormData) => Promise<Ticket>; // Change parameter type to FormData
   updateTicket: (id: string, updates: Partial<Ticket>) => Promise<Ticket>;
   updateTicketStatus: (id: string, status: TicketStatus) => Promise<Ticket>;
   addComment: (ticketId: string, content: string, isInternal: boolean) => Promise<Comment>;
@@ -29,34 +37,48 @@ export const useTickets = (): TicketsContextType => {
 };
 
 export const TicketsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [tickets, setTickets] = useState<Ticket[]>(mockTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
-  // const { currentUser } = useAuth();
   const { currentUser, authToken } = useAuth(); // Assuming authToken is available from useAuth
 
-    const API_BASE_URL = '/api/tickets'; // Your backend API endpoint for tickets
+  const API_BASE_URL = '/api/tickets'; // Your backend API endpoint for tickets
 
-    const fetchTickets = useCallback(async () => {
+  const fetchTickets = useCallback(async () => {
+    if (!authToken) {
+      console.warn('No auth token provided. Skipping ticket fetch.');
+      return;
+    }
+
     try {
-      const response = await fetch(API_BASE_URL, {
+      console.log('Fetching tickets from:', API_BASE_URL);
+      const response = await axios.get(API_BASE_URL, {
         headers: {
-          'Authorization': `Bearer ${authToken}`, // Include auth token if your API requires it
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
         },
       });
-      if (!response.ok) {
-        throw new Error(`Error fetching tickets: ${response.statusText}`);
+
+      console.log('Raw response from server:', response.data);
+      const data = response.data;
+
+      if (!Array.isArray(data.tickets)) {
+        console.error('Received data structure:', data);
+        throw new Error('Unexpected data format: Expected an array of tickets');
       }
-      const data = await response.json();
-      console.log('Tickets fetched:=============', data);
+
+      console.log('✅ Tickets fetched:', data.tickets.length);
+      console.log('Ticket data:', data.tickets);
       setTickets(data.tickets);
     } catch (error) {
-      console.error('Failed to fetch tickets:', error);
-      // Handle error (e.g., show a toast notification)
+      console.error('❌ Failed to fetch tickets:', error);
     }
   }, [authToken]);
+  
 
   useEffect(() => {
-    if (authToken) { // Fetch tickets only if authenticated
+    console.log('TicketsContext mounted, authToken:', authToken ? 'present' : 'missing');
+    if (authToken) {
+      console.log('Initiating ticket fetch...');
       fetchTickets();
     }
   }, [fetchTickets, authToken]);
@@ -73,73 +95,40 @@ export const TicketsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return tickets.filter(ticket => ticket.status === status);
   };
 
-  // Simulate network delay
-  // const createTicket = async (ticketData: Partial<Ticket>): Promise<Ticket> => {
-  //   await new Promise(resolve => setTimeout(resolve, 1000));
-    
-  //   const newTicket: Ticket = {
-  //     id: `ticket-${tickets.length + 1}`,
-  //     userId: currentUser?.id || '',
-  //     assignedTo: null,
-  //     type: ticketData.type || 'other',
-  //     priority: ticketData.priority || 'medium',
-  //     status: 'new',
-  //     subject: ticketData.subject || '',
-  //     description: ticketData.description || '',
-  //     attachments: ticketData.attachments || [],
-  //     comments: [],
-  //     createdAt: new Date(),
-  //     updatedAt: new Date(),
-  //   };
-    
-  //   setTickets(prev => [...prev, newTicket]);
-    
-  //   // Create notification for admins
-  //   const newNotification: Notification = {
-  //     id: `notification-${notifications.length + 1}`,
-  //     userId: 'admin-1', // Notify admin about new ticket
-  //     ticketId: newTicket.id,
-  //     message: `New ticket submitted: "${newTicket.subject}"`,
-  //     read: false,
-  //     createdAt: new Date(),
-  //   };
-    
-  //   setNotifications(prev => [...prev, newNotification]);
-    
-  //   return newTicket;
-  // };
-
-   const createTicket = async (ticketData: Partial<Ticket>): Promise<Ticket> => {
+  const createTicket = async (ticketData: FormData): Promise<Ticket> => {
     try {
-      const response = await fetch(API_BASE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          ...ticketData,
-          userId: currentUser?.id, // Ensure userId is sent with the ticket
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error creating ticket: ${response.statusText}`);
+      if (currentUser?.id && !ticketData.has('userId')) {
+        ticketData.append('userId', currentUser.id);
       }
 
-      const newTicket = await response.json();
-      await fetchTickets(); // Re-fetch all tickets to update the state
+      const response = await axios.post(API_BASE_URL, ticketData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${authToken}`,
+        },
+      });
+
+      const newTicket = response.data.ticket; // Access the ticket from the response data
+      console.log('Created ticket:', newTicket);
       
+      // Update local state with the new ticket
+      setTickets(prevTickets => {
+        const updatedTickets = [...prevTickets, newTicket];
+        console.log('Updated tickets list:', updatedTickets);
+        return updatedTickets;
+      });
+
       // Create notification for admins
       const newNotification: Notification = {
         id: `notification-${notifications.length + 1}`,
-        userId: 'admin-1', // Notify admin about new ticket
+        userId: 'admin-1',
         ticketId: newTicket.id,
         message: `New ticket submitted: "${newTicket.subject}"`,
         read: false,
         createdAt: new Date(),
+        type: 'comment'
       };
-      
+
       setNotifications(prev => [...prev, newNotification]);
 
       return newTicket;
@@ -150,11 +139,12 @@ export const TicketsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updateTicket = async (id: string, updates: Partial<Ticket>): Promise<Ticket> => {
-    // Simulate network delay
+    // This function would also need to be updated to use actual API calls
+    // For now, it's still using mock data simulation
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     let updatedTicket: Ticket | undefined;
-    
+
     setTickets(prev => {
       return prev.map(ticket => {
         if (ticket.id === id) {
@@ -168,23 +158,23 @@ export const TicketsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return ticket;
       });
     });
-    
+
     if (!updatedTicket) {
       throw new Error('Ticket not found');
     }
-    
+
     return updatedTicket;
   };
 
   const updateTicketStatus = async (id: string, status: TicketStatus): Promise<Ticket> => {
     const ticket = getTicketById(id);
-    
+
     if (!ticket) {
       throw new Error('Ticket not found');
     }
-    
+
     const updatedTicket = await updateTicket(id, { status });
-    
+
     // Create notification for ticket owner about status change
     const newNotification: Notification = {
       id: `notification-${notifications.length + 1}`,
@@ -193,87 +183,88 @@ export const TicketsProvider: React.FC<{ children: React.ReactNode }> = ({ child
       message: `Your ticket "${ticket.subject}" has been marked as ${status}.`,
       read: false,
       createdAt: new Date(),
+      type: 'status_change'
     };
-    
+
     setNotifications(prev => [...prev, newNotification]);
-    
+
     return updatedTicket;
   };
 
   const addComment = async (ticketId: string, content: string, isInternal: boolean): Promise<Comment> => {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     const ticket = getTicketById(ticketId);
-    
+
     if (!ticket) {
       throw new Error('Ticket not found');
     }
-    
+
     const newComment: Comment = {
       id: `comment-${new Date().getTime()}`,
       userId: currentUser?.id || '',
       content,
       isInternal,
       createdAt: new Date(),
+      attachments: [] // Add empty attachments array for new comments
     };
-    
+
     await updateTicket(ticketId, {
       comments: [...ticket.comments, newComment],
     });
-    
+
     // Create notification about new comment (if not internal)
     if (!isInternal) {
-      // If user adds comment, notify assigned admin
-      // If admin adds comment, notify ticket owner
-      const recipientId = currentUser?.role === 'admin' ? ticket.userId : ticket.assignedTo || 'admin-1';
-      
       const newNotification: Notification = {
         id: `notification-${notifications.length + 1}`,
-        userId: recipientId,
+        userId: ticket.userId,
         ticketId: ticket.id,
-        message: `New comment on ticket "${ticket.subject}".`,
+        message: `New comment on ticket "${ticket.subject}"`,
         read: false,
         createdAt: new Date(),
+        type: 'comment'
       };
-      
+
       setNotifications(prev => [...prev, newNotification]);
     }
-    
+
     return newComment;
   };
 
   const addAttachment = async (ticketId: string, file: File): Promise<Attachment> => {
-    // In a real app, you would upload the file to a storage service
-    // For demo purposes, we'll just create a mock attachment
-    
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     const ticket = getTicketById(ticketId);
-    
+
     if (!ticket) {
       throw new Error('Ticket not found');
     }
-    
+
+    // Create a URL for the file
+    const url = URL.createObjectURL(file);
+
     const newAttachment: Attachment = {
       id: `attachment-${new Date().getTime()}`,
       name: file.name,
       size: file.size,
       type: file.type,
-      url: URL.createObjectURL(file), // This will work for demo but isn't persistent
+      url: url,
+      uploadedBy: currentUser?.id || '',
+      uploadedAt: new Date()
     };
-    
+
     await updateTicket(ticketId, {
       attachments: [...ticket.attachments, newAttachment],
     });
-    
+
     return newAttachment;
   };
 
   const markNotificationAsRead = (id: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
+    setNotifications(prev =>
+      prev.map(notification =>
         notification.id === id ? { ...notification, read: true } : notification
       )
     );
@@ -299,7 +290,7 @@ export const TicketsProvider: React.FC<{ children: React.ReactNode }> = ({ child
         markNotificationAsRead,
         getUserNotifications,
       }}
-      
+
     >
       {children}
     </TicketsContext.Provider>

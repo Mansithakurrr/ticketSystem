@@ -199,6 +199,7 @@ export const tickets: Ticket[] = [
     createdAt: new Date('2024-03-10T08:00:00'),
     updatedAt: new Date('2024-03-10T09:15:00'),
   },
+  
   // ... (keeping other existing tickets)
 ];
 

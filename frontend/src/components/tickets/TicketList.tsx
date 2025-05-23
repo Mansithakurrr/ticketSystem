@@ -19,6 +19,8 @@ const TicketList: React.FC<{ className?: string }> = ({ className = '' }) => {
   const [filterPriority, setFilterPriority] = useState<TicketPriority | 'all'>('all');
   const [filterType, setFilterType] = useState<TicketType | 'all'>('all');
 
+  console.log("all tickets", tickets);
+  
   // Filter tickets
   const filteredTickets = tickets.filter(ticket => {
     const matchesSearch =
@@ -40,10 +42,10 @@ const TicketList: React.FC<{ className?: string }> = ({ className = '' }) => {
       case 'oldest':
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       case 'priority-high':
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        const priorityOrder: Record<TicketPriority, number> = { high: 0, medium: 1, low: 2 };
         return priorityOrder[a.priority] - priorityOrder[b.priority];
       case 'priority-low':
-        const priorityOrderReverse = { high: 2, medium: 1, low: 0 };
+        const priorityOrderReverse: Record<TicketPriority, number> = { high: 2, medium: 1, low: 0 };
         return priorityOrderReverse[a.priority] - priorityOrderReverse[b.priority];
       case 'recently-updated':
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
@@ -75,9 +77,8 @@ const TicketList: React.FC<{ className?: string }> = ({ className = '' }) => {
           <Select
             options={[
               { value: 'all', label: 'All Statuses' },
-              { value: 'new', label: 'New' },
+              { value: 'open', label: 'Open' },
               { value: 'in-progress', label: 'In Progress' },
-              { value: 'on-hold', label: 'On Hold' },
               { value: 'resolved', label: 'Resolved' },
               { value: 'closed', label: 'Closed' },
             ]}
